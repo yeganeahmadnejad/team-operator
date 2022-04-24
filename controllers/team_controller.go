@@ -21,18 +21,22 @@ import (
 	//"text/template"
 
 	teamv1 "github.com/yeganeahmadnejad/team-operator/api/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	 "sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/log"
+	//"k8s.io/client-go/tools/clientcmd"
 )
+
 var logf = log.Log.WithName("controller_team")
+
 // TeamReconciler reconciles a Team object
 type TeamReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-
 }
 
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams,verbs=get;list;watch;create;update;patch;delete
@@ -64,10 +68,29 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		// Error reading the object - requeue the request.
 		return ctrl.Result{}, err
-	}else{
-		log.Info("team is found and teamAdmin is : "+ team.TeamAdmin)
+	} else {
+		log.Info("team is found and teamAdmin is : " + team.Spec.TeamAdmin)
 
 	}
+	//	cm := &corev1.ConfigMap{}
+
+	//configmap := e.NewObject.(*corev1.ConfigMap)
+	cm := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "my-cm",
+			Namespace: "team-operator-system",
+		},
+	}
+	log.Info("cm is found and cm is : " + cm.Name)
+
+	//log.Info(cm.Data["key"])
+	//if _, err := clientset.CoreV1().ConfigMaps("game").Get("game-data", metav1.GetOptions{}); errors.IsNotFound(err) {}
+	//coreV1().ConfigMaps("my-namespace")
+	//clientset.CoreV1().ConfigMaps("my-namespace").Create(&cm)
 	// team := &teamv1.Team{}
 	// err := r.Get(ctx , team)
 	// if err != nil {
@@ -83,26 +106,25 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// 	return ctrl.Result{}, err
 	// }
 	// your logic here
-    //log := r.Log.WithValues("Team" )
+	//log := r.Log.WithValues("Team" )
 	//log.Info("team resource not found. Ignoring since object must be deleted")
 
+	// Fetch the Team instance
+	//team := &teamv1.Team{}
 
-// Fetch the Team instance
-//team := &teamv1.Team{}
-
-// err := r.Get(ctx, req.NamespacedName, team)
-// if err != nil {
-// 	if errors.IsNotFound(err) {
-// 		// Request object not found, could have been deleted after reconcile request.
-// 		// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-// 		// Return and don't requeue
-// 		log.Info("team resource not found. Ignoring since object must be deleted")
-// 		return ctrl.Result{}, nil
-// 	}
-// 	// Error reading the object - requeue the request.
-// 	log.Error(err, "Failed to get team")
-// 	return ctrl.Result{}, err
-// }
+	// err := r.Get(ctx, req.NamespacedName, team)
+	// if err != nil {
+	// 	if errors.IsNotFound(err) {
+	// 		// Request object not found, could have been deleted after reconcile request.
+	// 		// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
+	// 		// Return and don't requeue
+	// 		log.Info("team resource not found. Ignoring since object must be deleted")
+	// 		return ctrl.Result{}, nil
+	// 	}
+	// 	// Error reading the object - requeue the request.
+	// 	log.Error(err, "Failed to get team")
+	// 	return ctrl.Result{}, err
+	// }
 	return ctrl.Result{}, nil
 }
 
