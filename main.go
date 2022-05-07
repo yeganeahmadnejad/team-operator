@@ -72,7 +72,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "e9600511.snappcloud.io",
-		Namespace: 				"",
+		Namespace:              "",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")

@@ -18,7 +18,7 @@ package controllers
 
 import (
 	"context"
-	
+
 	//"text/template"
 
 	teamv1 "github.com/yeganeahmadnejad/team-operator/api/v1"
@@ -33,10 +33,12 @@ import (
 
 	//"k8s.io/client-go/tools/clientcmd"
 	"encoding/json"
-   "github.com/argoproj/argo-cd/pkg/apiclient"
-  sessionpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
-  "github.com/argoproj/argo-cd/v2/pkg/apiclient/account"
+	//"github.com/argoproj/argo-cd/pkg/apiclient"
+	// sessionpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
+	//"github.com/argoproj/argo-cd/v2/pkg/apiclient/account"
+//	b64 "encoding/base64"
 
+//	"golang.org/x/crypto/bcrypt"
 )
 
 //clientOpts.ServerAddr = fmt.Sprintf("%s:%d", *address, *port)
@@ -56,9 +58,10 @@ type TeamReconciler struct {
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
+// move the current state of the clus k8s.io/api closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
 // the Team object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
@@ -67,9 +70,9 @@ type TeamReconciler struct {
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.9.2/pkg/reconcile
 func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	ArgoCDClientset, _ := apiclient.NewClient(&apiclient.ClientOptions{Insecure: true, ServerAddr: "argocd.apps.private.okd4.ts-2.staging-snappcloud.io", PlainText: true})
+	//ArgoCDClientset, _ := apiclient.NewClient(&apiclient.ClientOptions{Insecure: true, ServerAddr: "argocd.apps.private.okd4.ts-2.staging-snappcloud.io", PlainText: true})
 	//ArgoCDClientset.UpdatePassword
-ArgoCDClientset.UpdatePassword(ctx, &account.UpdatePasswordRequest{CurrentPassword: "oldpassword", NewPassword: "newpassword"})
+	//ArgoCDClientset.UpdatePassword(ctx, &account.UpdatePasswordRequest{CurrentPassword: "oldpassword", NewPassword: "newpassword"})
 
 	log := log.FromContext(ctx)
 	reqLogger := logf.WithValues("Request.Namespace", req.Namespace, "Request.Name", req.Name)
@@ -128,10 +131,11 @@ ArgoCDClientset.UpdatePassword(ctx, &account.UpdatePasswordRequest{CurrentPasswo
 	// }
 	// data2, _ := json.Marshal(staticUser2)
 	// fmt.Println(string(data2))
+	log.Info("testtt")
 
 	staticUser := map[string]map[string]string{
 		"data": {
-			"accounts." + team.Spec.TeamAdmin: "apiKey,login",
+			"accounts." + team.Spec.TeamAdmin: "apiKey1,login1",
 		},
 	}
 	staticUserByte, _ := json.Marshal(staticUser)
@@ -160,6 +164,44 @@ ArgoCDClientset.UpdatePassword(ctx, &account.UpdatePasswordRequest{CurrentPasswo
 		log.Error(err, "Failed to get   cm")
 		return ctrl.Result{}, err
 	}
+/*
+	hash, _ := HashPassword(team.Spec.TeamAdmin) // ignore error for the sake of simplicity
+
+	log.Info("Password:" + team.Spec.TeamAdmin)
+	log.Info("Hash:    " + hash)
+
+	// match := CheckPasswordHash(team.Spec.TeamAdmin, hash)
+	//log.Info(match)
+
+	sEnc := b64.StdEncoding.EncodeToString([]byte(hash))
+	log.Info(sEnc)
+	staticPassword := map[string]map[string]string{
+		"data": {
+			"accounts." + team.Spec.TeamAdmin + ".password":      sEnc,
+			"accounts." + team.Spec.TeamAdmin + ".passwordMtime": "MjAyMi0wNC0zMFQwOTowODo0Mlo=",
+			"accounts." + team.Spec.TeamAdmin + ".tokens":        "bnVsbA==",
+		},
+	}
+	staticPassByte, _ := json.Marshal(staticPassword)
+	log.Info(string(staticPassByte))
+
+	err = r.Client.Patch(context.Background(), &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "argocd",
+			Name:      "my-secret",
+		},
+	}, client.RawPatch(types.StrategicMergePatchType, staticPassByte))
+	if err != nil {
+		log.Error(err, "Failed to patch  secret")
+		return ctrl.Result{}, err
+	} /*
+	// cm1 := &corev1.ConfigMap{}
+	// err = r.Client.Get(ctx, types.NamespacedName{Name: "my-cm", Namespace: "argocd"}, cm1)
+	// if err != nil {
+	// 	log.Error(err, "Failed to get   cm")
+	// 	return ctrl.Result{}, err
+	// }
+
 	/*
 		found := &corev1.ConfigMap{}
 		err = r.Client.Get(ctx, typ
@@ -223,6 +265,15 @@ ArgoCDClientset.UpdatePassword(ctx, &account.UpdatePasswordRequest{CurrentPasswo
 	// }
 	return ctrl.Result{}, nil
 }
+// func HashPassword(password string) (string, error) {
+// 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+// 	return string(bytes), err
+// }
+
+// func CheckPasswordHash(password, hash string) bool {
+// 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+// 	return err == nil
+// }
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager) error {
