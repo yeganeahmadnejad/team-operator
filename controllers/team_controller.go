@@ -36,9 +36,14 @@ import (
 	//"github.com/argoproj/argo-cd/pkg/apiclient"
 	// sessionpkg "github.com/argoproj/argo-cd/v2/pkg/apiclient/session"
 	//"github.com/argoproj/argo-cd/v2/pkg/apiclient/account"
-//	b64 "encoding/base64"
+	b64 "encoding/base64"
 
-//	"golang.org/x/crypto/bcrypt"
+	"bytes"
+	"io/ioutil"
+	"net/http"
+
+	"golang.org/x/crypto/bcrypt"
+	//"time"
 )
 
 //clientOpts.ServerAddr = fmt.Sprintf("%s:%d", *address, *port)
@@ -53,12 +58,17 @@ type TeamReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 }
+type account struct {
+	Password string `json:"password"`
+	Username string `json:"username"`
+}
 
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=team.snappcloud.io,resources=teams/finalizers,verbs=update
 //+kubebuilder:rbac:groups="",resources=configmaps,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
+
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the clus k8s.io/api closer to the desired state.
@@ -101,7 +111,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			APIVersion: "v1",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "my-cm",
+			Name:      "argocd-cm",
 			Namespace: "argocd",
 		},
 	}
@@ -135,9 +145,10 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	staticUser := map[string]map[string]string{
 		"data": {
-			"accounts." + team.Spec.TeamAdmin: "apiKey1,login1",
+			"accounts." + team.Spec.Argo.Tokens.ArgocdUser: "apiKey,login",
 		},
 	}
+
 	staticUserByte, _ := json.Marshal(staticUser)
 	log.Info(string(staticUserByte))
 
@@ -151,7 +162,7 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	err = r.Client.Patch(context.Background(), &corev1.ConfigMap{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "argocd",
-			Name:      "my-cm",
+			Name:      "argocd-cm",
 		},
 	}, client.RawPatch(types.StrategicMergePatchType, staticUserByte))
 	if err != nil {
@@ -159,13 +170,13 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 	cm1 := &corev1.ConfigMap{}
-	err = r.Client.Get(ctx, types.NamespacedName{Name: "my-cm", Namespace: "argocd"}, cm1)
+	err = r.Client.Get(ctx, types.NamespacedName{Name: "argocd-cm", Namespace: "argocd"}, cm1)
 	if err != nil {
-		log.Error(err, "Failed to get   cm")
+		log.Error(err, "Failed to get  cm")
 		return ctrl.Result{}, err
 	}
-/*
-	hash, _ := HashPassword(team.Spec.TeamAdmin) // ignore error for the sake of simplicity
+	/**/
+	hash, _ := HashPassword(team.Spec.Argo.Tokens.ArgocdPass) // ignore error for the sake of simplicity
 
 	log.Info("Password:" + team.Spec.TeamAdmin)
 	log.Info("Hash:    " + hash)
@@ -177,9 +188,9 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	log.Info(sEnc)
 	staticPassword := map[string]map[string]string{
 		"data": {
-			"accounts." + team.Spec.TeamAdmin + ".password":      sEnc,
-			"accounts." + team.Spec.TeamAdmin + ".passwordMtime": "MjAyMi0wNC0zMFQwOTowODo0Mlo=",
-			"accounts." + team.Spec.TeamAdmin + ".tokens":        "bnVsbA==",
+			"accounts." + team.Spec.Argo.Tokens.ArgocdUser + ".password":      sEnc,
+			"accounts." + team.Spec.Argo.Tokens.ArgocdUser + ".passwordMtime": "MjAyMi0wNC0zMFQwOTowODo0Mlo=",
+			//"accounts." + team.Spec.Argo.Tokens.ArgocdUser + ".tokens":        "bnVsbA==",
 		},
 	}
 	staticPassByte, _ := json.Marshal(staticPassword)
@@ -188,40 +199,85 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	err = r.Client.Patch(context.Background(), &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: "argocd",
-			Name:      "my-secret",
+			Name:      "argocd-secret",
 		},
 	}, client.RawPatch(types.StrategicMergePatchType, staticPassByte))
 	if err != nil {
 		log.Error(err, "Failed to patch  secret")
 		return ctrl.Result{}, err
-	} /*
-	// cm1 := &corev1.ConfigMap{}
-	// err = r.Client.Get(ctx, types.NamespacedName{Name: "my-cm", Namespace: "argocd"}, cm1)
-	// if err != nil {
-	// 	log.Error(err, "Failed to get   cm")
-	// 	return ctrl.Result{}, err
-	// }
+	}
+	account1 := account{Password: team.Spec.Argo.Tokens.ArgocdPass, Username: team.Spec.Argo.Tokens.ArgocdUser}
+	log.Info("account is")
+	log.Info(account1.Password + account1.Username)
+	log.Info("token is")
+//	time.Sleep(8 * time.Second)
 
+	//log.Info(getToken(account1))
+
+	type response struct {
+		Token string `json:"token"`
+	}
+
+	url := "https://argocd.apps.private.okd4.ts-2.staging-snappcloud.io/api/v1/session"
+	// curl https://argocd.apps.private.okd4.ts-2.staging-snappcloud.io/api/v1/session -X POST -d '{"password": "newpassword","username": "admin"}'
+	data2, err := json.Marshal(account1)
+	//reqLogger := logf.WithValues("Request.Namespace",  "Request.Name")
+    log.Info("data2")
+	log.Info(string(data2))
+	if err != nil {
+		log.Error(err, "test")
+	}
+	// Create a new request using http
+	req1, err2 := http.NewRequest("POST", url, bytes.NewBuffer(data2))
+	req1.Header.Set("Content-Type", "application/json")
+
+	// Send req using http Client
+	client := &http.Client{}
+	resp, err := client.Do(req1)
+	if err2 != nil {
+		log.Error(err,"Error on response.\n[ERROR] -")
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Error(err,"Error while reading the response bytes:")
+	}
+	log.Info(string([]byte(body)))
+	response1 := response{}
+	jsonErr := json.Unmarshal(body, &response1)
+	if jsonErr != nil {
+		log.Error(jsonErr,"json err")
+	}
+	log.Info(response1.Token)
 	/*
-		found := &corev1.ConfigMap{}
-		err = r.Client.Get(ctx, typ
-			es.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, found)
-		if err != nil && errors.IsNotFound(err) {
-			// Define a new deployment
-			cm1 := r.configmapfortest(cm)
-			log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
-			err = r.Client.Create(ctx, cm1)
-			r.Client.P
-			if err != nil {
-				log.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+		// cm1 := &corev1.ConfigMap{}
+		// err = r.Client.Get(ctx, types.NamespacedName{Name: "my-cm", Namespace: "argocd"}, cm1)
+		// if err != nil {
+		// 	log.Error(err, "Failed to get   cm")
+		// 	return ctrl.Result{}, err
+		// }
+
+		/*
+			found := &corev1.ConfigMap{}
+			err = r.Client.Get(ctx, typ
+				es.NamespacedName{Name: cm.Name, Namespace: cm.Namespace}, found)
+			if err != nil && errors.IsNotFound(err) {
+				// Define a new deployment
+				cm1 := r.configmapfortest(cm)
+				log.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+				err = r.Client.Create(ctx, cm1)
+				r.Client.P
+				if err != nil {
+					log.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+					return ctrl.Result{}, err
+				}
+				// Deployment created successfully - return and requeue
+				return ctrl.Result{Requeue: true}, nil
+			} else if err != nil {
+				log.Error(err, "Failed to get Deployment")
 				return ctrl.Result{}, err
 			}
-			// Deployment created successfully - return and requeue
-			return ctrl.Result{Requeue: true}, nil
-		} else if err != nil {
-			log.Error(err, "Failed to get Deployment")
-			return ctrl.Result{}, err
-		}
 
 	*/
 
@@ -265,15 +321,15 @@ func (r *TeamReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	// }
 	return ctrl.Result{}, nil
 }
-// func HashPassword(password string) (string, error) {
-// 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
-// 	return string(bytes), err
-// }
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	return string(bytes), err
+}
 
-// func CheckPasswordHash(password, hash string) bool {
-// 	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-// 	return err == nil
-// }
+func CheckPasswordHash(password, hash string) bool {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	return err == nil
+}
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -281,4 +337,45 @@ func (r *TeamReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&teamv1.Team{}).
 		Complete(r)
+}
+
+func getToken(account1 account) string {
+	type response struct {
+		Token string `json:"token"`
+	}
+
+	url := "https://argocd.apps.private.okd4.ts-2.staging-snappcloud.io/api/v1/session"
+	// curl https://argocd.apps.private.okd4.ts-2.staging-snappcloud.io/api/v1/session -X POST -d '{"password": "newpassword","username": "admin"}'
+	data2, err := json.Marshal(account1)
+	reqLogger := logf.WithValues("Request.Namespace", "Request.Name")
+
+	reqLogger.Info(string(data2))
+	if err != nil {
+		reqLogger.Error(err, "test")
+	}
+	// Create a new request using http
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(data2))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Send req using http Client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		reqLogger.Info("Error on response.\n[ERROR] -", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		reqLogger.Info("Error while reading the response bytes:", err)
+	}
+	reqLogger.Info(string([]byte(body)))
+	response1 := response{}
+	jsonErr := json.Unmarshal(body, &response1)
+	if jsonErr != nil {
+		reqLogger.Error(jsonErr, "test")
+	}
+	reqLogger.Info(response1.Token)
+	return response1.Token
+
 }
